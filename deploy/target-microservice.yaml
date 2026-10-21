@@ -1,0 +1,60 @@
+# Target Microservice Application Deployment
+# Real containerized workload scheduled via proactive-scheduler
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-workload-service
+  namespace: default
+  labels:
+    app: cloud-workload
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloud-workload
+  template:
+    metadata:
+      labels:
+        app: cloud-workload
+    spec:
+      schedulerName: proactive-scheduler
+      containers:
+        - name: web-server
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-workload-service
+  namespace: default
+  labels:
+    app: cloud-workload
+spec:
+  type: NodePort
+  selector:
+    app: cloud-workload
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080

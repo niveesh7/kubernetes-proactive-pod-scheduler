@@ -1,0 +1,18 @@
+# Kubernetes Scheduler Policy & Extender Configuration
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+leaderElection:
+  leaderElect: false
+profiles:
+  - schedulerName: proactive-scheduler
+extenders:
+  - urlPrefix: "http://host.docker.internal:8080"
+    filterVerb: "filter"
+    prioritizeVerb: "prioritize"
+    weight: 5
+    enableHTTPS: false
+    nodeCacheCapable: false
+    managedResources:
+      - name: "example.com/proactive"
+        ignoredByScheduler: true
+    ignorable: false

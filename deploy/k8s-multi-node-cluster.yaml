@@ -1,0 +1,27 @@
+# Kind multi-node Kubernetes cluster configuration
+# 1 Control-Plane Master Node + 3 Worker Nodes
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        scheduler:
+          extraArgs:
+            config: /etc/kubernetes/scheduler/scheduler-config.yaml
+          extraVolumes:
+            - name: scheduler-config
+              hostPath: /etc/kubernetes/scheduler/scheduler-config.yaml
+              mountPath: /etc/kubernetes/scheduler/scheduler-config.yaml
+              readOnly: true
+              pathType: File
+  - role: worker
+    labels:
+      node-role.kubernetes.io/worker: "worker-node-1"
+  - role: worker
+    labels:
+      node-role.kubernetes.io/worker: "worker-node-2"
+  - role: worker
+    labels:
+      node-role.kubernetes.io/worker: "worker-node-3"

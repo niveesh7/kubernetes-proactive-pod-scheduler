@@ -1,0 +1,4 @@
+Scheduling Strategy,Avg Latency (ms),P95 Latency (ms),P99 Latency (ms),SLO Violations (%),Cluster Load Variance
+Reactive HPA (Default K8s),29.51,34.98,39.45,0.0,0.0303
+LSTM-Only Proactive,28.0,32.74,36.05,0.0,0.0082
+Proposed System (Ensemble+MONR),25.3,29.59,32.24,0.0,0.0

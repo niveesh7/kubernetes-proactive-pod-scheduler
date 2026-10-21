@@ -1,0 +1,29 @@
+# Python Bytecode and Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# System and IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# Antigravity internal cache (if present in repo)
+.gemini/
+.system_generated/
+
+# KEEP model checkpoints and dataset traces
+!models/*.keras
+!models/*.json
+!models/*.joblib
+!data/*.csv
