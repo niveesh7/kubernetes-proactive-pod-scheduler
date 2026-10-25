@@ -105,15 +105,87 @@ async def get_dashboard_status():
     else:
         current_req_rate = traffic_stats.get("current_rate", 35.0)
         current_lat_ms = traffic_stats.get("avg_latency_ms", 28.0)
-    
-    # 2. Record telemetry point
+
+    # 2. Build live pods & pod counts per node
+    cluster_nodes = metrics_collector.get_cluster_nodes()
+    node_pod_counts = {n["node_name"]: 0 for n in cluster_nodes}
+    live_pods = []
+
+    if scheduler.k8s_connected and scheduler.k8s_api is not None:
+        try:
+            pod_list = scheduler.k8s_api.list_namespaced_pod(namespace="production")
+            for p in pod_list.items:
+                assigned_node = p.spec.node_name or "Pending"
+                if assigned_node in node_pod_counts:
+                    node_pod_counts[assigned_node] += 1
+                
+                ready_containers = sum(1 for cs in (p.status.container_statuses or []) if cs.ready)
+                total_containers = len(p.spec.containers) if p.spec.containers else 1
+                
+                cpu_req = "50m"
+                mem_req = "64Mi"
+                try:
+                    c0 = p.spec.containers[0]
+                    if c0.resources and c0.resources.requests:
+                        cpu_req = c0.resources.requests.get("cpu", "50m")
+                        mem_req = c0.resources.requests.get("memory", "64Mi")
+                except Exception:
+                    pass
+
+                live_pods.append({
+                    "name": p.metadata.name,
+                    "namespace": p.metadata.namespace,
+                    "node": assigned_node,
+                    "status": p.status.phase or "Pending",
+                    "ready": f"{ready_containers}/{total_containers}",
+                    "cpu_req": cpu_req,
+                    "mem_req": mem_req,
+                    "created_at": p.metadata.creation_timestamp.strftime("%H:%M:%S") if p.metadata.creation_timestamp else "Recent"
+                })
+        except Exception:
+            pass
+
+    # If in autonomous mode or no pods returned from API yet, assemble from scheduled events
+    if not live_pods:
+        # Default baseline pod on node 0
+        p0_node = cluster_nodes[0]["node_name"] if cluster_nodes else "k3d-proactive-cluster-agent-0"
+        node_pod_counts[p0_node] = node_pod_counts.get(p0_node, 0) + 1
+        live_pods.append({
+            "name": "cloud-workload-primary",
+            "namespace": "production",
+            "node": p0_node,
+            "status": "Running",
+            "ready": "1/1",
+            "cpu_req": "100m",
+            "mem_req": "128Mi",
+            "created_at": "Active"
+        })
+        for ev in scheduler.scheduled_events[-12:]:
+            s_node = ev.get("selected_node") or ev.get("target_node")
+            if s_node in node_pod_counts:
+                node_pod_counts[s_node] += 1
+            live_pods.append({
+                "name": ev["pod_name"],
+                "namespace": ev.get("namespace", "production"),
+                "node": s_node or p0_node,
+                "status": "Running",
+                "ready": "1/1",
+                "cpu_req": f"{int(ev.get('req_cpu', 0.1)*1000)}m",
+                "mem_req": f"{int(ev.get('req_mem_mb', 128))}Mi",
+                "created_at": ev["timestamp"].split(" ")[-1]
+            })
+
+    # 3. Record telemetry point
     metrics_collector.record_cluster_sample(
         request_rate=current_req_rate,
         latency_ms=current_lat_ms
     )
     
-    # 3. Node Metrics and Multi-Objective Ranking
-    nodes_metrics = metrics_collector.get_realtime_node_metrics()
+    # 4. Node Metrics with dynamic traffic and pod load
+    nodes_metrics = metrics_collector.get_realtime_node_metrics(
+        current_traffic_rate=current_req_rate,
+        node_pod_counts=node_pod_counts
+    )
     
     # Near-future forecast
     fused_pred_cores = 1.65
@@ -140,8 +212,7 @@ async def get_dashboard_status():
         forecasted_surge_cpu=max(0.0, fused_pred_cores - 1.2)
     )
 
-    # 4. Generate Chart Curve Data
-    # Fetch recent slice for visual plot
+    # 5. Generate Chart Curve Data
     test_csv = DATA_DIR / "workload_test.csv"
     chart_data = {"labels": [], "actual": [], "lstm": [], "xgb": [], "ensemble": []}
     if test_csv.exists():
@@ -156,44 +227,6 @@ async def get_dashboard_status():
             round(ensemble_forecaster.weight_lstm * l + ensemble_forecaster.weight_xgb * x, 2)
             for l, x in zip(chart_data["lstm"], chart_data["xgb"])
         ]
-
-    # 5. Fetch live Kubernetes Pods
-    live_pods = []
-    node_pod_counts = {r["node_name"]: 0 for r in rankings}
-    if scheduler.k8s_connected and scheduler.k8s_api is not None:
-        try:
-            pod_list = scheduler.k8s_api.list_namespaced_pod(namespace="production")
-            for p in pod_list.items:
-                assigned_node = p.spec.node_name or "Pending"
-                if assigned_node in node_pod_counts:
-                    node_pod_counts[assigned_node] += 1
-                
-                # Check container ready
-                ready_containers = sum(1 for cs in (p.status.container_statuses or []) if cs.ready)
-                total_containers = len(p.spec.containers) if p.spec.containers else 1
-                
-                cpu_req = "50m"
-                mem_req = "64Mi"
-                try:
-                    c0 = p.spec.containers[0]
-                    if c0.resources and c0.resources.requests:
-                        cpu_req = c0.resources.requests.get("cpu", "50m")
-                        mem_req = c0.resources.requests.get("memory", "64Mi")
-                except Exception:
-                    pass
-
-                live_pods.append({
-                    "name": p.metadata.name,
-                    "namespace": p.metadata.namespace,
-                    "node": assigned_node,
-                    "status": p.status.phase or "Pending",
-                    "ready": f"{ready_containers}/{total_containers}",
-                    "cpu_req": cpu_req,
-                    "mem_req": mem_req,
-                    "created_at": p.metadata.creation_timestamp.strftime("%H:%M:%S") if p.metadata.creation_timestamp else "Recent"
-                })
-        except Exception:
-            pass
 
     return {
         "status": "online",

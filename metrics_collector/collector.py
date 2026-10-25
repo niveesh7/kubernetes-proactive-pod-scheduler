@@ -198,13 +198,22 @@ class ClusterMetricsCollector:
             pass
         return metrics_map
 
-    def get_realtime_node_metrics(self) -> Dict[str, Dict[str, float]]:
+    def get_realtime_node_metrics(
+        self,
+        current_traffic_rate: float = 0.0,
+        node_pod_counts: Optional[Dict[str, int]] = None
+    ) -> Dict[str, Dict[str, float]]:
         """
         Collect real-time CPU & Memory usage per node.
         Scrapes Prometheus if accessible, then Kubernetes Metrics Server, then fallback telemetry.
+        Integrates dynamic traffic consumption based on hosted active pods.
         """
         nodes = self.get_cluster_nodes()
         metrics = {}
+        
+        if node_pod_counts is None:
+            node_pod_counts = {}
+        total_hosted_pods = max(1, sum(node_pod_counts.values()))
         
         # 1. Attempt Prometheus scrape
         prom_cpu = self.query_prometheus('sum(rate(container_cpu_usage_seconds_total[1m])) by (node)')
@@ -234,18 +243,24 @@ class ClusterMetricsCollector:
             name = node["node_name"]
             cap_cpu = node["cpu_capacity"]
             cap_mem = node["mem_capacity_mb"]
+            hosted_pods = node_pod_counts.get(name, 0)
+            
+            # Traffic load: nodes hosting pods process proportional incoming traffic
+            traffic_share = hosted_pods / total_hosted_pods if total_hosted_pods > 0 else 0.0
+            traffic_cpu_impact = traffic_share * (current_traffic_rate * 0.016)
+            traffic_mem_impact = traffic_share * (current_traffic_rate * 6.5)
             
             if name in prom_cpu_map:
                 curr_cpu = prom_cpu_map[name]
             elif name in k8s_metrics_map:
                 curr_cpu = k8s_metrics_map[name]["cpu_cores"]
             else:
-                # Base dynamic load
-                base_cpu = self.fallback_nodes.get(name, {}).get("base_cpu", cap_cpu * 0.35)
-                curr_cpu = base_cpu + np.random.normal(0, 0.04)
+                # Base dynamic load with organic runtime jitter
+                base_cpu = self.fallback_nodes.get(name, {}).get("base_cpu", cap_cpu * 0.30)
+                curr_cpu = base_cpu + np.random.normal(0, 0.03)
 
-            # Apply dynamic load from scheduled pods or overload injections
-            curr_cpu += self.dynamic_node_load.get(name, 0.0)
+            # Apply dynamic load from scheduled pods, incoming traffic & overload simulation
+            curr_cpu += self.dynamic_node_load.get(name, 0.0) + traffic_cpu_impact
             curr_cpu = np.clip(curr_cpu, 0.2, cap_cpu * 0.98)
 
             if name in prom_mem_map:
@@ -253,9 +268,9 @@ class ClusterMetricsCollector:
             elif name in k8s_metrics_map:
                 curr_mem = k8s_metrics_map[name]["mem_mb"]
             else:
-                base_mem = self.fallback_nodes.get(name, {}).get("base_mem", cap_mem * 0.40)
+                base_mem = self.fallback_nodes.get(name, {}).get("base_mem", cap_mem * 0.35)
                 curr_mem = base_mem + np.random.normal(0, 15.0)
-                curr_mem += self.dynamic_node_load.get(name, 0.0) * 350.0
+                curr_mem += (self.dynamic_node_load.get(name, 0.0) * 350.0) + traffic_mem_impact
                 curr_mem = np.clip(curr_mem, 400.0, cap_mem * 0.95)
 
             metrics[name] = {
