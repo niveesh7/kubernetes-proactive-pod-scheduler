@@ -158,24 +158,62 @@ This will:
 3. Execute the comparative benchmarking suite and generate results.
 4. Launch the **Live Web Dashboard** at **`http://127.0.0.1:8080`** and open your browser automatically!
 
-### Option C: 1-Click Free Cloud Execution (GitHub Codespaces - 4 Real Nodes)
-Run the entire project in the cloud with **zero local setup, zero RAM usage, and 4 real Kubernetes nodes**:
-1. Push this repository to GitHub.
-2. Click **"<> Code" -> "Codespaces" -> "Create codespace on main"**.
-3. In Codespaces terminal, run `./start_dashboard.sh`.
-4. Open the forwarded port 8080 URL in your browser to view the live multi-node dashboard from anywhere!
-*(See [CLOUD_CODESPACES_GUIDE.md](file:///c:/Users/Administrator/Desktop/FINALYEAR%20PROJECT/CLOUD_CODESPACES_GUIDE.md) for full detailed walkthrough).*
+### Option C: 1-Click Free Cloud Execution (GitHub Codespaces - 15 Real K3s Nodes)
+Run the entire project in the cloud with **zero local setup, zero RAM usage, and 15 real Kubernetes nodes**:
+1. Push this repository to GitHub or open your Codespace.
+2. In the Codespaces terminal, run:
+   ```bash
+   chmod +x *.sh
+   ./setup_codespace.sh 15   # Launches 15 K3d nodes (1 server + 14 agents)
+   ./start_dashboard.sh      # Starts web dashboard on port 8080
+   ```
+3. If you have made updates to the repository, pull the latest code inside Codespaces:
+   ```bash
+   git fetch origin
+   git reset --hard origin/main
+   pkill -f "dashboard/app.py" || true
+   ./start_dashboard.sh
+   ```
+4. Open the forwarded port 8080 URL in your browser and press `Ctrl + Shift + R` (Hard Refresh) to view the live 15-node dashboard from anywhere!
 
 ---
 
 ## 6. Testing & Demonstrating Features on the Dashboard
 
-Once the dashboard opens at `http://127.0.0.1:8080`:
-1. **Live Worker Nodes View**: Observe the real-time CPU and Memory allocations for `worker-node-1`, `worker-node-2`, and `worker-node-3` along with their dynamic **Multi-Objective Composite Score**.
-2. **Forecasting Trajectory**: Inspect the live Chart.js visualization showing how the **Proposed Ensemble** tracks actual workload demand closer than LSTM alone or XGBoost alone.
-3. **Trigger Flash Surge Button**: Click **"Trigger Flash Surge (+120 req/s)"** in the top bar. You will observe traffic shoot up to 120 req/s. The LSTM-XGBoost ensemble immediately projects the surge and the Multi-Objective Ranker shifts placement priority to protect overloaded nodes.
-4. **Schedule New Pod Button**: Click **"Schedule New Pod"**. The proactive scheduler calculates the best node and binds the pod via Kubernetes API, recording the event in the audit log table.
-5. **View Benchmark**: Click **"View Benchmark"** to review the head-to-head comparison against Default Reactive HPA.
+Once the dashboard opens at `http://127.0.0.1:8080` (or your Codespaces public URL):
+
+1. **Interactive Traffic Stream Controls (`▶ Start Alibaba Traffic Stream`)**:
+   - The system starts in an **IDLE** state (0.0 req/s) so examiners and evaluators can inspect the baseline cluster before generating requests.
+   - Click **"Start Alibaba Traffic Stream"** to begin replaying the real-world Alibaba Cloud 11.11 Global Shopping Festival workload trace.
+   - Click **"Pause Traffic Stream"** at any time to freeze the incoming flow.
+
+2. **Autonomous Proactive Lifecycle Storyboard (5-Phase Demonstration)**:
+   - Click **"▶ Run Live 5-Phase Scenario Demonstration"** to watch the end-to-end autonomous lifecycle play out step-by-step:
+     - **Phase 1: Baseline Normal State**: Steady 35 req/s baseline traffic on primary node.
+     - **Phase 2: AI Lookahead Warning**: LSTM + XGBoost ensemble detects an impending +380% flash crowd spike $T-30s$ in advance.
+     - **Phase 3: Multi-Objective Node Ranking (MONR)**: Evaluates all 15 nodes across 5 criteria and selects the optimal target.
+     - **Phase 4: Pre-Emptive K8s Binding**: Pre-warms and binds the pod 15 seconds *before* traffic reaches the cluster.
+     - **Phase 5: Surge Absorbed with Zero SLO Violations**: Flash crowd hits; 100% of requests handled smoothly under 30ms latency.
+
+3. **Multi-Objective Node Ranking (MONR) Decision Engine**:
+   - Displays the exact mathematical formula:
+     $$S_i = \sum_{k=1}^5 w_k \cdot C_{i,k}$$
+   - Shows the 5 weighted sub-scores for every node:
+     - CPU Headroom ($w_1 = 30\%$)
+     - RAM Headroom ($w_2 = 25\%$)
+     - Cluster Balance ($w_3 = 20\%$)
+     - Network Latency ($w_4 = 15\%$)
+     - Packing Efficiency ($w_5 = 10\%$)
+   - Displays a glowing **`★ TARGET: Optimal node chosen by proactive-scheduler`** banner on Rank #1.
+
+4. **Trigger Flash Surge (+120 req/s)**:
+   - Manually inject an instantaneous burst to test the ensemble forecaster's XGBoost layer.
+
+5. **Schedule New Pod**:
+   - Manually trigger a proactive scheduling cycle to bind a pod via the Kubernetes API.
+
+6. **View Benchmark**:
+   - Review the head-to-head performance against Default Reactive Kubernetes HPA.
 
 ---
 
