@@ -12,6 +12,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
+import os
 import sys
 
 # Try importing Kubernetes client
@@ -74,8 +75,10 @@ class ProactivePodScheduler:
         try:
             try:
                 config.load_incluster_config()
+                v1 = client.CoreV1Api()
+                v1.list_node(_request_timeout=2.0)
                 self.k8s_connected = True
-                self.k8s_api = client.CoreV1Api()
+                self.k8s_api = v1
                 logger.info("Scheduler connected to in-cluster Kubernetes API.")
             except Exception:
                 kube_file = Path(os.path.expanduser(KUBECONFIG_PATH))
@@ -85,8 +88,10 @@ class ProactivePodScheduler:
                         kube_file = default_kube
                 if kube_file.exists():
                     config.load_kube_config(config_file=str(kube_file))
+                    v1 = client.CoreV1Api()
+                    v1.list_node(_request_timeout=2.0)
                     self.k8s_connected = True
-                    self.k8s_api = client.CoreV1Api()
+                    self.k8s_api = v1
                     logger.info(f"Scheduler connected via kubeconfig: {kube_file}")
                 else:
                     self.k8s_connected = False
@@ -127,19 +132,57 @@ class ProactivePodScheduler:
             logger.debug(f"Forecasting step: {e}")
         return 0.35  # Safe default headroom estimate
 
+    def get_current_pod_counts(self) -> Dict[str, int]:
+        """Compute the current pod count per node across Kubernetes or scheduled events."""
+        nodes = self.collector.get_cluster_nodes()
+        node_counts = {n["node_name"]: 0 for n in nodes}
+        
+        # If real K8s is connected and has pods, query K8s
+        if self.k8s_connected and self.k8s_api is not None:
+            try:
+                pod_list = self.k8s_api.list_namespaced_pod(namespace="production")
+                for p in pod_list.items:
+                    assigned_node = p.spec.node_name
+                    if assigned_node in node_counts:
+                        node_counts[assigned_node] += 1
+                if sum(node_counts.values()) > 0:
+                    return node_counts
+            except Exception:
+                pass
+                
+        # Primary baseline workload is on agent-0
+        p0 = nodes[0]["node_name"] if nodes else "k3d-proactive-cluster-agent-0"
+        node_counts[p0] = node_counts.get(p0, 0) + 1
+        
+        # Count all scheduled pods in the session
+        for ev in self.scheduled_events:
+            s_node = ev.get("selected_node") or ev.get("target_node")
+            if s_node in node_counts:
+                node_counts[s_node] += 1
+                
+        return node_counts
+
     def decide_node_for_pod(
         self,
         pod_name: str,
         namespace: str = "default",
         req_cpu: float = 0.1,
-        req_mem_mb: float = 128.0
+        req_mem_mb: float = 128.0,
+        node_pod_counts: Optional[Dict[str, int]] = None,
+        traffic_rate: float = 0.0
     ) -> Dict[str, Any]:
         """
         Execute full proactive scheduling decision pipeline:
         Telemetry -> Forecast -> Multi-Objective Ranking -> Best Node Selection.
         """
-        # 1. Scrape live metrics
-        nodes_metrics = self.collector.get_realtime_node_metrics()
+        if node_pod_counts is None:
+            node_pod_counts = self.get_current_pod_counts()
+
+        # 1. Scrape live metrics with active pod counts
+        nodes_metrics = self.collector.get_realtime_node_metrics(
+            current_traffic_rate=traffic_rate,
+            node_pod_counts=node_pod_counts
+        )
         
         # 2. Get near-future forecasted surge
         forecast_surge = self.get_forecasted_surge()
@@ -159,7 +202,7 @@ class ProactivePodScheduler:
         best_score = rankings[0]["composite_score"]
         
         # Dynamically consume capacity on the selected node so future pods balance across nodes
-        self.collector.allocate_pod(best_node, cpu_cores=req_cpu)
+        self.collector.allocate_pod(best_node, cpu_cores=max(0.35, req_cpu * 2.5))
         
         decision = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -189,7 +232,7 @@ class ProactivePodScheduler:
     ) -> Dict[str, Any]:
         """
         AUTONOMOUS PROACTIVE RESCHEDULING & REBALANCING ENGINE:
-        1. Identifies or simulates an overloaded node crossing the 80% SLO threshold.
+        1. Identifies the busiest overloaded node crossing the SLO threshold.
         2. Detects imminent SLO degradation before user latency spikes.
         3. Recalculates MONR rankings across candidate nodes.
         4. Selects optimal underutilized target node (Rank #1).
@@ -200,16 +243,22 @@ class ProactivePodScheduler:
         short_id = uuid.uuid4().hex[:5]
         pod_name = f"rebalanced-workload-{short_id}"
 
-        # Step 1: Force/simulate an overload spike on a node (e.g. agent-1 at 88.5%)
-        nodes = self.collector.get_cluster_nodes()
-        origin_node = nodes[1]["node_name"] if len(nodes) > 1 else nodes[0]["node_name"]
+        # Step 1: Identify origin node (busiest node with pods)
+        node_pod_counts = self.get_current_pod_counts()
+        if any(node_pod_counts.values()):
+            origin_node = max(node_pod_counts, key=node_pod_counts.get)
+        else:
+            nodes = self.collector.get_cluster_nodes()
+            origin_node = nodes[0]["node_name"] if nodes else "k3d-proactive-cluster-agent-0"
+
+        # Simulate overload spike on origin node (crossing SLO threshold)
         overload_name, overload_util = self.collector.simulate_node_overload(origin_node)
 
         # Step 2: Live metrics reflection
-        nodes_metrics = self.collector.get_realtime_node_metrics()
+        nodes_metrics = self.collector.get_realtime_node_metrics(node_pod_counts=node_pod_counts)
         forecast_surge = self.get_forecasted_surge()
 
-        # Step 3: MONR Ranking (Origin node will naturally plummet in rank due to 88.5% CPU)
+        # Step 3: MONR Ranking (Origin node plummets due to overload, emptiest node is Rank #1)
         rankings = self.ranker.rank_nodes(
             nodes_metrics=nodes_metrics,
             pod_request_cpu=0.4,
@@ -226,9 +275,9 @@ class ProactivePodScheduler:
             target_score = rankings[0]["composite_score"]
 
         # Step 4: Execute pre-emptive rescheduling in cluster
-        # Relieve the overloaded node
+        # Relieve the overloaded origin node
         self.collector.relieve_node_overload(origin_node, target_util=0.28)
-        # Allocate workload to the target node
+        # Allocate workload to the optimal target node
         self.collector.allocate_pod(target_node, cpu_cores=0.45)
 
         if self.k8s_connected and self.k8s_api is not None:
@@ -269,7 +318,9 @@ class ProactivePodScheduler:
         surge_reason: str = "LSTM-XGBoost Forecasted Flash Crowd",
         namespace: str = "production",
         req_cpu: float = 0.1,
-        req_mem_mb: float = 128.0
+        req_mem_mb: float = 128.0,
+        node_pod_counts: Optional[Dict[str, int]] = None,
+        traffic_rate: float = 0.0
     ) -> Dict[str, Any]:
         """
         AUTONOMOUS PROACTIVE ENGINE:
@@ -281,12 +332,14 @@ class ProactivePodScheduler:
         short_id = uuid.uuid4().hex[:5]
         pod_name = f"proactive-surge-{short_id}"
 
-        # 1. Decide best node based on forecasted surge
+        # 1. Decide best node based on forecasted surge and cluster load
         decision = self.decide_node_for_pod(
             pod_name=pod_name,
             namespace=namespace,
             req_cpu=req_cpu,
-            req_mem_mb=req_mem_mb
+            req_mem_mb=req_mem_mb,
+            node_pod_counts=node_pod_counts,
+            traffic_rate=traffic_rate
         )
         decision["trigger_type"] = "AUTONOMOUS_PROACTIVE"
         decision["surge_reason"] = surge_reason

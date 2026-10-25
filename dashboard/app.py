@@ -47,7 +47,11 @@ templates = Jinja2Templates(directory=str(DASHBOARD_DIR / "templates"))
 metrics_collector = ClusterMetricsCollector()
 ensemble_forecaster = EnsembleForecaster()
 node_ranker = MultiObjectiveNodeRanker()
-scheduler = ProactivePodScheduler()
+scheduler = ProactivePodScheduler(
+    collector=metrics_collector,
+    ranker=node_ranker,
+    ensemble=ensemble_forecaster
+)
 traffic_sim = WorkloadTrafficSimulator(target_url="http://127.0.0.1:30080/")
 
 # Start in idle state; user starts traffic interactively via dashboard button
@@ -266,11 +270,15 @@ async def trigger_traffic_surge():
 @app.post("/api/proactive/simulate-company-scenario")
 async def simulate_company_scenario():
     """Trigger the authentic Alibaba/Amazon company trace autonomous proactive scenario."""
+    current_traffic = 35.0
+    node_pod_counts = scheduler.get_current_pod_counts()
     decision = scheduler.trigger_autonomous_proactive_scale(
         surge_reason="Alibaba Cloud 11.11 E-Commerce Flash Crowd (+1.65 cores)",
         namespace="production",
         req_cpu=0.1,
-        req_mem_mb=128.0
+        req_mem_mb=128.0,
+        node_pod_counts=node_pod_counts,
+        traffic_rate=current_traffic
     )
     # Trigger traffic surge so traffic hits the pre-warmed pod
     traffic_sim.trigger_surge(surge_rate=110.0, duration_seconds=15)
@@ -284,17 +292,21 @@ async def simulate_company_scenario():
 @app.post("/api/pods/schedule-test")
 async def trigger_pod_schedule(req: PodScheduleRequest):
     """Trigger proactive pod scheduling decision and create/bind real pod in K8s."""
-    if scheduler.k8s_connected:
-        # Create real pod in Kubernetes
-        scheduler.create_pod_in_k8s(req.pod_name, req.namespace, req.req_cpu, req.req_mem_mb)
-        
+    current_traffic = traffic_sim.get_stats().get("current_rate", 0.0) if traffic_sim.is_running else 0.0
+    node_pod_counts = scheduler.get_current_pod_counts()
+    
     decision = scheduler.decide_node_for_pod(
         pod_name=req.pod_name,
         namespace=req.namespace,
         req_cpu=req.req_cpu,
-        req_mem_mb=req.req_mem_mb
+        req_mem_mb=req.req_mem_mb,
+        node_pod_counts=node_pod_counts,
+        traffic_rate=current_traffic
     )
-    scheduler.bind_pod_in_k8s(req.pod_name, req.namespace, decision["selected_node"])
+    if scheduler.k8s_connected:
+        scheduler.create_pod_in_k8s(req.pod_name, req.namespace, req.req_cpu, req.req_mem_mb)
+        scheduler.bind_pod_in_k8s(req.pod_name, req.namespace, decision["selected_node"])
+        
     return decision
 
 
@@ -304,17 +316,22 @@ async def trigger_batch_pod_schedule(req: BatchScheduleRequest):
     try:
         results = []
         count = min(max(req.count, 1), 12)  # Safely allow between 1 and 12 pods
+        current_traffic = traffic_sim.get_stats().get("current_rate", 0.0) if traffic_sim.is_running else 0.0
+        
         for i in range(count):
             import uuid
             short_id = uuid.uuid4().hex[:5]
             pod_name = f"proactive-surge-{short_id}"
             
-            # Decide node using Multi-Objective Node Ranking
+            # Decide node using Multi-Objective Node Ranking with dynamically updated pod counts
+            node_pod_counts = scheduler.get_current_pod_counts()
             decision = scheduler.decide_node_for_pod(
                 pod_name=pod_name,
                 namespace=req.namespace,
                 req_cpu=req.req_cpu,
-                req_mem_mb=req.req_mem_mb
+                req_mem_mb=req.req_mem_mb,
+                node_pod_counts=node_pod_counts,
+                traffic_rate=current_traffic
             )
             decision["trigger_type"] = f"PROACTIVE_BATCH_+{count}"
             

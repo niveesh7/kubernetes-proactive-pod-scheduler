@@ -12,6 +12,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+import os
 import sys
 
 # Try importing Kubernetes client
@@ -63,6 +64,8 @@ class ClusterMetricsCollector:
             # First try in-cluster config, then kubeconfig
             try:
                 config.load_incluster_config()
+                v1 = client.CoreV1Api()
+                v1.list_node(_request_timeout=2.0)
                 self.k8s_connected = True
                 print("[MetricsCollector] Connected via in-cluster Kubernetes config.")
             except Exception:
@@ -73,6 +76,8 @@ class ClusterMetricsCollector:
                         kube_file = default_kube
                 if kube_file.exists():
                     config.load_kube_config(config_file=str(kube_file))
+                    v1 = client.CoreV1Api()
+                    v1.list_node(_request_timeout=2.0)
                     self.k8s_connected = True
                     print(f"[MetricsCollector] Connected to Kubernetes cluster via {kube_file}")
                 else:
@@ -245,6 +250,10 @@ class ClusterMetricsCollector:
             cap_mem = node["mem_capacity_mb"]
             hosted_pods = node_pod_counts.get(name, 0)
             
+            # Hosted pods directly consume CPU & RAM requests (each pod uses ~0.45 cores and ~400MB)
+            pod_cpu_impact = hosted_pods * 0.45
+            pod_mem_impact = hosted_pods * 400.0
+
             # Traffic load: nodes hosting pods process proportional incoming traffic
             traffic_share = hosted_pods / total_hosted_pods if total_hosted_pods > 0 else 0.0
             traffic_cpu_impact = traffic_share * (current_traffic_rate * 0.016)
@@ -260,7 +269,7 @@ class ClusterMetricsCollector:
                 curr_cpu = base_cpu + np.random.normal(0, 0.03)
 
             # Apply dynamic load from scheduled pods, incoming traffic & overload simulation
-            curr_cpu += self.dynamic_node_load.get(name, 0.0) + traffic_cpu_impact
+            curr_cpu += self.dynamic_node_load.get(name, 0.0) + pod_cpu_impact + traffic_cpu_impact
             curr_cpu = np.clip(curr_cpu, 0.2, cap_cpu * 0.98)
 
             if name in prom_mem_map:
@@ -270,7 +279,7 @@ class ClusterMetricsCollector:
             else:
                 base_mem = self.fallback_nodes.get(name, {}).get("base_mem", cap_mem * 0.35)
                 curr_mem = base_mem + np.random.normal(0, 15.0)
-                curr_mem += (self.dynamic_node_load.get(name, 0.0) * 350.0) + traffic_mem_impact
+                curr_mem += (self.dynamic_node_load.get(name, 0.0) * 350.0) + pod_mem_impact + traffic_mem_impact
                 curr_mem = np.clip(curr_mem, 400.0, cap_mem * 0.95)
 
             metrics[name] = {
