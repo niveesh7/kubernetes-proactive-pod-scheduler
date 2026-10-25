@@ -37,6 +37,7 @@ class ClusterMetricsCollector:
         self.k8s_connected = False
         self.metrics_history: List[Dict[str, Any]] = []
         self.max_buffer_size = WINDOW_SIZE * 5
+        self.dynamic_node_load: Dict[str, float] = {}
         
         # Dynamic 15-node baseline state for cluster
         self.fallback_nodes = {
@@ -241,8 +242,11 @@ class ClusterMetricsCollector:
             else:
                 # Base dynamic load
                 base_cpu = self.fallback_nodes.get(name, {}).get("base_cpu", cap_cpu * 0.35)
-                curr_cpu = base_cpu + np.random.normal(0, 0.08)
-                curr_cpu = np.clip(curr_cpu, 0.2, cap_cpu * 0.95)
+                curr_cpu = base_cpu + np.random.normal(0, 0.04)
+
+            # Apply dynamic load from scheduled pods or overload injections
+            curr_cpu += self.dynamic_node_load.get(name, 0.0)
+            curr_cpu = np.clip(curr_cpu, 0.2, cap_cpu * 0.98)
 
             if name in prom_mem_map:
                 curr_mem = prom_mem_map[name]
@@ -250,7 +254,8 @@ class ClusterMetricsCollector:
                 curr_mem = k8s_metrics_map[name]["mem_mb"]
             else:
                 base_mem = self.fallback_nodes.get(name, {}).get("base_mem", cap_mem * 0.40)
-                curr_mem = base_mem + np.random.normal(0, 25.0)
+                curr_mem = base_mem + np.random.normal(0, 15.0)
+                curr_mem += self.dynamic_node_load.get(name, 0.0) * 350.0
                 curr_mem = np.clip(curr_mem, 400.0, cap_mem * 0.95)
 
             metrics[name] = {
@@ -264,6 +269,43 @@ class ClusterMetricsCollector:
             }
 
         return metrics
+
+    def allocate_pod(self, node_name: str, cpu_cores: float = 0.45):
+        """Increase node load when a pod is scheduled on it, reducing its headroom."""
+        self.dynamic_node_load[node_name] = self.dynamic_node_load.get(node_name, 0.0) + cpu_cores
+
+    def deallocate_pod(self, node_name: str, cpu_cores: float = 0.45):
+        """Decrease node load when a pod is evicted or rescheduled away."""
+        curr = self.dynamic_node_load.get(node_name, 0.0)
+        self.dynamic_node_load[node_name] = max(-0.8, curr - cpu_cores)
+
+    def simulate_node_overload(self, node_name: Optional[str] = None) -> tuple:
+        """Force a node into severe overload (>85% utilization) to trigger proactive rescheduling."""
+        nodes = self.get_cluster_nodes()
+        if not node_name:
+            node_name = nodes[0]["node_name"] if nodes else "k3d-proactive-cluster-agent-0"
+        
+        cap = 4.0
+        for n in nodes:
+            if n["node_name"] == node_name:
+                cap = n["cpu_capacity"]
+                break
+        
+        target_used = cap * 0.885
+        base = self.fallback_nodes.get(node_name, {}).get("base_cpu", cap * 0.35)
+        self.dynamic_node_load[node_name] = target_used - base
+        return node_name, 88.5
+
+    def relieve_node_overload(self, node_name: str, target_util: float = 0.28):
+        """Relieve overloaded node back to safe normal utilization (~28%)."""
+        nodes = self.get_cluster_nodes()
+        cap = 4.0
+        for n in nodes:
+            if n["node_name"] == node_name:
+                cap = n["cpu_capacity"]
+                break
+        base = self.fallback_nodes.get(node_name, {}).get("base_cpu", cap * 0.35)
+        self.dynamic_node_load[node_name] = (cap * target_util) - base
 
     def record_cluster_sample(self, request_rate: float = 45.0, latency_ms: float = 35.0):
         """Append sample to rolling time-series buffer for feature windowing."""

@@ -307,6 +307,19 @@ async def trigger_batch_pod_schedule(req: BatchScheduleRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@app.post("/api/pods/trigger-reschedule")
+async def trigger_pod_reschedule():
+    """Simulate an overload condition on a node and execute autonomous pre-emptive rescheduling."""
+    try:
+        migration = scheduler.trigger_proactive_rescheduling(namespace="production")
+        return {
+            "status": "success",
+            "migration": migration
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @app.get("/api/benchmark/summary")
 async def get_benchmark_summary():
     """Return latest benchmark summary table."""

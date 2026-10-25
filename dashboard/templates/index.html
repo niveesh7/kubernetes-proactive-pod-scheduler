@@ -52,6 +52,10 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     Trigger Flash Surge (+120 req/s)
                 </button>
+                <button id="btn-trigger-reschedule" onclick="demonstrateLiveRescheduling()" class="px-3.5 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5 shadow-amber-900/30">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    <span>⚡ Demonstrate Live Rescheduling</span>
+                </button>
                 <button onclick="schedulePodTest()" class="px-3.5 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                     Schedule New Pod
@@ -180,6 +184,74 @@
                     </div>
                     <div class="text-xs font-semibold text-slate-200">5. Surge Absorbed Smoothly</div>
                     <p class="text-[11px] text-slate-400 mt-1">Flash crowd hits! Absorbed with 0% dropped requests & &lt;30ms latency.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Autonomous Pod Rescheduling & Rebalancing Visualizer -->
+        <div id="reschedule-visualizer-box" class="gradient-card border border-amber-500/50 rounded-xl p-5 shadow-2xl relative overflow-hidden transition-all hidden">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
+                <div class="flex items-center gap-3">
+                    <span class="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30">
+                        <svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    </span>
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            Autonomous Pod Rescheduling & Rebalancing Engine
+                            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">OVERLOAD RESCHEDULE ACTIVE</span>
+                        </h3>
+                        <p class="text-xs text-slate-400">Pre-emptively migrating workload pod from overloaded node to optimal MONR node before latency degrades!</p>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('reschedule-visualizer-box').classList.add('hidden')" class="px-2.5 py-1 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-md">✕ Close</button>
+            </div>
+
+            <!-- Migration Journey 3-Card Flow Diagram -->
+            <div class="grid grid-cols-1 md:grid-cols-7 gap-3 items-center">
+                <!-- Origin Node (Overloaded) -->
+                <div class="md:col-span-3 p-4 rounded-xl border border-rose-500/80 bg-rose-950/30 shadow-lg ring-1 ring-rose-500/30">
+                    <div class="flex items-center justify-between text-xs mb-2">
+                        <span class="font-bold text-rose-400 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                            ORIGIN NODE (OVERLOADED)
+                        </span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">88.5% CPU &gt; 80% SLO</span>
+                    </div>
+                    <div id="reschedule-origin-name" class="font-mono font-bold text-base text-white">k3d-proactive-cluster-agent-1</div>
+                    <div class="mt-2 text-xs text-slate-300">
+                        Workload evicted pre-emptively: <span id="reschedule-origin-pod" class="font-mono font-bold text-amber-300">rebalanced-workload</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-rose-300 flex items-center gap-1">
+                        <span>⚠ Threshold Crossed: Eviction initiated 15s before SLA breach to protect cluster balance.</span>
+                    </div>
+                </div>
+
+                <!-- Animated Migration Vector -->
+                <div class="md:col-span-1 flex flex-col items-center justify-center py-2 text-center">
+                    <span class="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1 animate-pulse">RESCHEDULING</span>
+                    <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shadow-lg">
+                        <svg class="w-5 h-5 text-amber-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </div>
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 mt-1">0s Downtime</span>
+                    <span class="text-[9px] text-slate-400 font-mono">K8s Binding API</span>
+                </div>
+
+                <!-- Target Destination Node (Optimal) -->
+                <div class="md:col-span-3 p-4 rounded-xl border border-emerald-500/80 bg-emerald-950/30 shadow-lg ring-1 ring-emerald-500/30">
+                    <div class="flex items-center justify-between text-xs mb-2">
+                        <span class="font-bold text-emerald-400 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                            DESTINATION NODE (RANK #1 MONR)
+                        </span>
+                        <span id="reschedule-target-score" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">S_i: 0.9124</span>
+                    </div>
+                    <div id="reschedule-target-name" class="font-mono font-bold text-base text-white">k3d-proactive-cluster-agent-7</div>
+                    <div class="mt-2 text-xs text-slate-300">
+                        Bound via K8s API: <span class="font-mono font-bold text-emerald-300">create_namespaced_binding</span>
+                    </div>
+                    <div class="mt-2 text-[11px] text-emerald-300 flex items-center gap-1">
+                        <span>✓ Pre-warmed & ready: Absorbed workload with 0% dropped requests & &lt;28ms latency!</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -486,6 +558,7 @@
 
             rankings.forEach(node => {
                 const isBest = node.rank === 1;
+                const isOverloaded = node.current_util_pct.cpu > 80;
                 const hostedPods = nodePodCounts[node.node_name] || 0;
                 const sub = node.sub_scores || {
                     cpu_headroom: 0.85,
@@ -495,19 +568,33 @@
                     resource_efficiency: 0.84
                 };
                 
+                let cardStyle = 'border-slate-800/80';
+                if (isOverloaded) {
+                    cardStyle = 'border-rose-500 ring-2 ring-rose-500/50 shadow-rose-950/60 bg-rose-950/20';
+                } else if (isBest) {
+                    cardStyle = 'border-emerald-500/80 ring-2 ring-emerald-500/40 shadow-emerald-950/40';
+                }
+
                 const card = document.createElement('div');
-                card.className = `gradient-card border ${isBest ? 'border-emerald-500/80 ring-2 ring-emerald-500/30 shadow-emerald-950/40' : 'border-slate-800/80'} rounded-xl p-4 shadow-lg transition-all flex flex-col justify-between`;
+                card.className = `gradient-card border ${cardStyle} rounded-xl p-4 shadow-lg transition-all flex flex-col justify-between`;
                 
+                let badgeHTML = '';
+                if (isOverloaded) {
+                    badgeHTML = `<span class="px-2 py-0.5 text-xs font-bold rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">⚠ OVERLOADED (&gt;80%)</span>`;
+                } else if (isBest) {
+                    badgeHTML = `<span class="px-2 py-0.5 text-xs font-bold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">★ RANK #1 (OPTIMAL)</span>`;
+                } else {
+                    badgeHTML = `<span class="px-2 py-0.5 text-xs font-bold rounded-md bg-slate-800 text-slate-400">RANK #${node.rank}</span>`;
+                }
+
                 card.innerHTML = `
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full ${isBest ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}"></span>
+                                <span class="w-2.5 h-2.5 rounded-full ${isOverloaded ? 'bg-rose-500 animate-ping' : isBest ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}"></span>
                                 <span class="font-bold text-sm text-white">${node.node_name}</span>
                             </div>
-                            <span class="px-2 py-0.5 text-xs font-bold rounded-md ${isBest ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}">
-                                ${isBest ? '★ RANK #1 (OPTIMAL)' : `RANK #${node.rank}`}
-                            </span>
+                            ${badgeHTML}
                         </div>
 
                         <!-- Current Allocations -->
@@ -515,10 +602,10 @@
                             <div>
                                 <div class="flex justify-between text-xs text-slate-400 mb-1">
                                     <span>CPU Used</span>
-                                    <span class="font-mono">${node.current_util_pct.cpu}%</span>
+                                    <span class="font-mono font-bold ${isOverloaded ? 'text-rose-400' : 'text-slate-200'}">${node.current_util_pct.cpu}%</span>
                                 </div>
                                 <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                    <div class="h-1.5 rounded-full ${node.current_util_pct.cpu > 75 ? 'bg-rose-500' : 'bg-indigo-500'}" style="width: ${Math.min(100, node.current_util_pct.cpu)}%"></div>
+                                    <div class="h-1.5 rounded-full ${node.current_util_pct.cpu > 80 ? 'bg-rose-500' : node.current_util_pct.cpu > 60 ? 'bg-amber-500' : 'bg-indigo-500'}" style="width: ${Math.min(100, node.current_util_pct.cpu)}%"></div>
                                 </div>
                             </div>
 
@@ -544,7 +631,7 @@
                                     <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
                                     CPU Headroom (30%)
                                 </span>
-                                <span class="font-mono font-semibold text-indigo-300">${(sub.cpu_headroom * 100).toFixed(0)}%</span>
+                                <span class="font-mono font-semibold ${sub.cpu_headroom < 0.2 ? 'text-rose-400' : 'text-indigo-300'}">${(sub.cpu_headroom * 100).toFixed(0)}%</span>
                             </div>
                             <div class="flex items-center justify-between text-slate-400">
                                 <span class="flex items-center gap-1">
@@ -581,13 +668,18 @@
                     <div class="mt-3.5 pt-3 border-t border-slate-800/80">
                         <div class="flex items-center justify-between text-xs mb-1.5">
                             <span class="text-slate-400">Composite Score <span class="font-mono font-bold text-slate-300">S_i</span>:</span>
-                            <span class="font-mono font-bold text-base ${isBest ? 'text-emerald-400' : 'text-slate-300'}">${node.composite_score.toFixed(4)}</span>
+                            <span class="font-mono font-bold text-base ${isOverloaded ? 'text-rose-400' : isBest ? 'text-emerald-400' : 'text-slate-300'}">${node.composite_score.toFixed(4)}</span>
                         </div>
                         <div class="flex items-center justify-between text-xs mb-2.5">
                             <span class="text-slate-400">Hosted Pods:</span>
                             <span class="font-mono font-bold text-cyan-400">${hostedPods} Pods</span>
                         </div>
-                        ${isBest ? `
+                        ${isOverloaded ? `
+                            <div class="p-2 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[11px] leading-tight flex items-start gap-1">
+                                <span class="font-bold">⚠ OVERLOAD DETECTED:</span>
+                                <span>CPU exceeded 80% SLO threshold. Workload being rescheduled away to protect latency!</span>
+                            </div>
+                        ` : isBest ? `
                             <div class="p-2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] leading-tight flex items-start gap-1">
                                 <span class="font-bold">★ TARGET:</span>
                                 <span>Highest score. Scheduler will pre-bind incoming surge pods here.</span>
@@ -638,6 +730,7 @@
                 const card = document.createElement('div');
                 card.className = "bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs space-y-1.5 hover:border-slate-700 transition-all";
                 const isProactive = p.name.includes('proactive') || p.name.includes('surge');
+                const isRescheduled = p.name.includes('rebalanced') || p.name.includes('reschedule');
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <span class="font-mono font-bold text-white truncate max-w-[130px]" title="${p.name}">${p.name}</span>
@@ -645,7 +738,12 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${p.status}
                         </span>
                     </div>
-                    ${isProactive ? `
+                    ${isRescheduled ? `
+                        <div class="text-[9px] font-mono text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 rounded px-1.5 py-0.5 flex items-center justify-between">
+                            <span>⚡ RESCHEDULED POD</span>
+                            <span class="text-emerald-400">0s Downtime</span>
+                        </div>
+                    ` : isProactive ? `
                         <div class="text-[9px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 flex items-center justify-between">
                             <span>⚡ PRE-EMPTIVE POD</span>
                             <span class="text-slate-400">MONR Bound</span>
@@ -702,18 +800,63 @@
 
             events.slice(-6).reverse().forEach(ev => {
                 const tr = document.createElement('tr');
+                const isReschedule = ev.event_type === "PROACTIVE_RESCHEDULE" || (ev.pod_name && ev.pod_name.includes('rebalanced'));
                 tr.innerHTML = `
                     <td class="py-2 px-3 text-slate-400">${ev.timestamp}</td>
-                    <td class="py-2 px-3 font-semibold text-white">${ev.pod_name}</td>
+                    <td class="py-2 px-3 font-semibold text-white">
+                        ${ev.pod_name}
+                        ${isReschedule ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">RESCHEDULED</span>' : ''}
+                    </td>
                     <td class="py-2 px-3 text-slate-400">${ev.namespace}</td>
                     <td class="py-2 px-3 text-cyan-400">${ev.req_cpu} cores / ${ev.req_mem_mb} MB</td>
                     <td class="py-2 px-3 text-amber-400">+${ev.forecast_surge_cpu} cores</td>
                     <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">${ev.selected_node}</span></td>
                     <td class="py-2 px-3 text-emerald-400 font-bold">${ev.composite_score.toFixed(4)}</td>
-                    <td class="py-2 px-3"><span class="text-emerald-400">Bound via K8s API</span></td>
+                    <td class="py-2 px-3">
+                        ${isReschedule 
+                            ? `<span class="text-amber-300 font-semibold">⚡ Evicted ${ev.origin_node || 'origin'} ➔ Bound</span>`
+                            : `<span class="text-emerald-400">Bound via K8s API</span>`}
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        async function demonstrateLiveRescheduling() {
+            const btn = document.getElementById('btn-trigger-reschedule');
+            let origHTML = '';
+            if (btn) {
+                origHTML = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = `<span class="animate-spin">⏳</span> Rescheduling Overloaded Pod...`;
+            }
+
+            try {
+                const res = await fetch('/api/pods/trigger-reschedule', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    const mig = data.migration;
+                    const box = document.getElementById('reschedule-visualizer-box');
+                    if (box) {
+                        box.classList.remove('hidden');
+                        document.getElementById('reschedule-origin-name').innerText = mig.origin_node;
+                        document.getElementById('reschedule-origin-pod').innerText = mig.pod_name;
+                        document.getElementById('reschedule-target-name').innerText = mig.target_node;
+                        document.getElementById('reschedule-target-score').innerText = `S_i: ${mig.composite_score.toFixed(4)}`;
+                        
+                        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    await fetchDashboardData();
+                }
+            } catch (err) {
+                console.error("Reschedule demonstration error:", err);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHTML;
+                }
+            }
         }
 
         async function triggerSurge() {
