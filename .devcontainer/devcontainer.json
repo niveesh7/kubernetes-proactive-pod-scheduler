@@ -5,12 +5,12 @@
   "portsAttributes": {
     "8080": {
       "label": "Proactive Scheduler Live Dashboard",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "openBrowser",
+      "visibility": "public"
     },
     "30080": {
       "label": "Target Cloud Microservice",
       "onAutoForward": "silent"
     }
-  },
-  "postCreateCommand": "bash setup_codespace.sh"
+  }
 }

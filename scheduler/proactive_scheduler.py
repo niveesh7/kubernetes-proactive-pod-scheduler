@@ -369,7 +369,12 @@ class ProactivePodScheduler:
                     if success:
                         scheduled.append(decision)
         except Exception as e:
-            logger.error(f"Error checking pending pods: {e}")
+            # If K8s apiserver is warming up or temporarily returning 503, log quietly
+            err_str = str(e)
+            if "503" in err_str or "apiserver not ready" in err_str or "SSLError" in err_str:
+                logger.debug(f"Kubernetes apiserver warming up: {err_str[:80]}...")
+            else:
+                logger.warning(f"Notice while checking pending pods: {err_str[:120]}")
             
         return scheduled
 

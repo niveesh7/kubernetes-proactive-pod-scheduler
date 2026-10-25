@@ -87,7 +87,8 @@ def main():
 
     # Step 5: Launch Web Dashboard
     print("\n[Step 5/5] Starting Proactive Scheduler & Live Dashboard...")
-    dashboard_url = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}"
+    browser_host = "127.0.0.1" if DASHBOARD_HOST == "0.0.0.0" else DASHBOARD_HOST
+    dashboard_url = f"http://{browser_host}:{DASHBOARD_PORT}"
     print(f"\n===========================================================================")
     print(f"  >>> LIVE DASHBOARD RUNNING AT: {dashboard_url} <<<")
     print(f"  Press Ctrl+C to stop the server at any time.")

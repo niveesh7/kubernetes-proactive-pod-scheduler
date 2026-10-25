@@ -307,7 +307,8 @@ async def scheduler_prioritize(request: Request):
 def run_dashboard():
     """Run uvicorn server for the dashboard."""
     import uvicorn
-    print(f"\n[Dashboard] Launching Kubernetes Proactive Scheduler Dashboard at http://{DASHBOARD_HOST}:{DASHBOARD_PORT}")
+    browser_host = "127.0.0.1" if DASHBOARD_HOST == "0.0.0.0" else DASHBOARD_HOST
+    print(f"\n[Dashboard] Launching Kubernetes Proactive Scheduler Dashboard at http://{browser_host}:{DASHBOARD_PORT}")
     uvicorn.run(app, host=DASHBOARD_HOST, port=DASHBOARD_PORT, log_level="warning")
 
 

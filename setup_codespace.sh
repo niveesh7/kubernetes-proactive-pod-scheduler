@@ -7,6 +7,11 @@ echo "==========================================================================
 echo " Setting up Kubernetes Proactive Scheduler Cloud Environment (4-Node K3d Cluster)"
 echo "================================================================================"
 
+# 0. Ensure Docker service is running
+echo "[0/5] Ensuring Docker daemon is running..."
+sudo service docker start 2>/dev/null || sudo /etc/init.d/docker start 2>/dev/null || true
+sleep 2
+
 # 1. Install kubectl if not present
 if ! command -v kubectl &> /dev/null; then
     echo "[1/5] Installing kubectl..."
