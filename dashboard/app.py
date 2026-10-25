@@ -153,7 +153,7 @@ async def get_dashboard_status():
     if not live_pods:
         # Default baseline pod on node 0
         p0_node = cluster_nodes[0]["node_name"] if cluster_nodes else "k3d-proactive-cluster-agent-0"
-        node_pod_counts[p0_node] = node_pod_counts.get(p0_node, 0) + 1
+        node_pod_counts = scheduler.get_current_pod_counts()
         live_pods.append({
             "name": "cloud-workload-primary",
             "namespace": "production",
@@ -164,10 +164,8 @@ async def get_dashboard_status():
             "mem_req": "128Mi",
             "created_at": "Active"
         })
-        for ev in scheduler.scheduled_events[-12:]:
+        for ev in scheduler.scheduled_events:
             s_node = ev.get("selected_node") or ev.get("target_node")
-            if s_node in node_pod_counts:
-                node_pod_counts[s_node] += 1
             live_pods.append({
                 "name": ev["pod_name"],
                 "namespace": ev.get("namespace", "production"),

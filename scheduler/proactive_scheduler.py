@@ -156,9 +156,17 @@ class ProactivePodScheduler:
         
         # Count all scheduled pods in the session
         for ev in self.scheduled_events:
-            s_node = ev.get("selected_node") or ev.get("target_node")
-            if s_node in node_counts:
-                node_counts[s_node] += 1
+            if ev.get("event_type") == "PROACTIVE_RESCHEDULE":
+                o_node = ev.get("origin_node")
+                t_node = ev.get("target_node") or ev.get("selected_node")
+                if o_node in node_counts and node_counts[o_node] > 0:
+                    node_counts[o_node] -= 1
+                if t_node in node_counts:
+                    node_counts[t_node] += 1
+            else:
+                s_node = ev.get("selected_node") or ev.get("target_node")
+                if s_node in node_counts:
+                    node_counts[s_node] += 1
                 
         return node_counts
 
