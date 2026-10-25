@@ -50,8 +50,8 @@ node_ranker = MultiObjectiveNodeRanker()
 scheduler = ProactivePodScheduler()
 traffic_sim = WorkloadTrafficSimulator(target_url="http://127.0.0.1:30080/")
 
-# Start background traffic generator
-traffic_sim.start(base_rate=35.0)
+# Start in idle state; user starts traffic interactively via dashboard button
+traffic_sim.is_running = False
 
 # Load ensemble models on startup
 try:
@@ -76,8 +76,12 @@ class BatchScheduleRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_index(request: Request):
-    """Serve Dashboard HTML User Interface."""
-    return templates.TemplateResponse(request=request, name="index.html")
+    """Serve Dashboard HTML User Interface with anti-caching headers."""
+    response = templates.TemplateResponse(request=request, name="index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @app.get("/health")
@@ -91,8 +95,16 @@ async def get_dashboard_status():
     """Comprehensive real-time status API for cluster telemetry and forecasts."""
     # 1. Traffic stats
     traffic_stats = traffic_sim.get_stats()
-    current_req_rate = traffic_stats.get("current_rate", 35.0)
-    current_lat_ms = traffic_stats.get("avg_latency_ms", 28.0)
+    traffic_stats["is_running"] = traffic_sim.is_running
+    if not traffic_sim.is_running:
+        current_req_rate = 0.0
+        current_lat_ms = 0.0
+        traffic_stats["current_rate"] = 0.0
+        traffic_stats["avg_latency_ms"] = 0.0
+        traffic_stats["slo_violation_pct"] = 0.0
+    else:
+        current_req_rate = traffic_stats.get("current_rate", 35.0)
+        current_lat_ms = traffic_stats.get("avg_latency_ms", 28.0)
     
     # 2. Record telemetry point
     metrics_collector.record_cluster_sample(
@@ -195,9 +207,25 @@ async def get_dashboard_status():
     }
 
 
+@app.post("/api/traffic/start")
+async def start_traffic():
+    """Start diurnal traffic stream based on Alibaba trace."""
+    traffic_sim.start(base_rate=35.0)
+    return {"status": "success", "message": "Workload stream started (~35 req/s)"}
+
+
+@app.post("/api/traffic/stop")
+async def stop_traffic():
+    """Stop traffic stream to idle."""
+    traffic_sim.stop()
+    return {"status": "success", "message": "Workload stream paused (Idle 0 req/s)"}
+
+
 @app.post("/api/traffic/surge")
 async def trigger_traffic_surge():
     """Trigger sudden flash crowd surge."""
+    if not traffic_sim.is_running:
+        traffic_sim.start(base_rate=35.0)
     traffic_sim.trigger_surge(surge_rate=125.0, duration_seconds=15)
     return {"status": "success", "message": "Flash surge triggered (+125 req/s)"}
 

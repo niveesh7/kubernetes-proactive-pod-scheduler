@@ -36,6 +36,10 @@
 
             <!-- Action Controls -->
             <div class="flex flex-wrap items-center gap-2">
+                <button id="btn-toggle-traffic" onclick="toggleTrafficStream()" class="px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5 shadow-emerald-900/30">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path></svg>
+                    <span id="btn-traffic-label">Start Alibaba Traffic Stream</span>
+                </button>
                 <button onclick="scaleBatchPods(7)" class="px-3.5 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5 shadow-violet-900/30">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                     Scale +7 Pods (Flash Surge)
@@ -70,7 +74,7 @@
                     <span id="metric-rate" class="text-2xl font-bold font-mono text-cyan-400">35.0</span>
                     <span class="text-xs text-slate-500">req/sec</span>
                 </div>
-                <div class="mt-2 text-xs text-slate-400">Diurnal Web Requests</div>
+                <div id="metric-traffic-status" class="mt-2 text-xs text-slate-400">Status: Idle (Click 'Start Traffic')</div>
             </div>
 
             <div class="gradient-card border border-slate-800/80 rounded-xl p-4 shadow-lg">
@@ -182,12 +186,34 @@
 
         <!-- Worker Nodes Grid -->
         <div>
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-2">
                 <h2 class="text-base font-semibold text-slate-200 flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
                     Kubernetes Worker Nodes & Multi-Objective Ranking
                 </h2>
                 <span class="text-xs text-slate-400">Scheduler Name: <code class="font-mono text-indigo-400 bg-slate-800 px-2 py-0.5 rounded">proactive-scheduler</code></span>
+            </div>
+
+            <!-- Proactive Placement Decision Engine Explainer -->
+            <div class="p-3.5 mb-3.5 rounded-xl border border-indigo-500/30 bg-slate-900/80 text-xs space-y-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        Multi-Objective Node Ranking (MONR) Decision Formula:
+                    </span>
+                    <span class="font-mono text-[11px] text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">Decision Rule: ArgMax(Composite Score S_i)</span>
+                </div>
+                <div class="font-mono text-[11px] p-2 rounded bg-slate-950 border border-slate-800 text-slate-300 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    <span class="text-emerald-400 font-bold">S_i =</span>
+                    <span class="text-indigo-300">(0.30 &times; CPU_Headroom)</span>
+                    <span class="text-cyan-300">+ (0.25 &times; RAM_Headroom)</span>
+                    <span class="text-amber-300">+ (0.20 &times; Cluster_Balance)</span>
+                    <span class="text-emerald-300">+ (0.15 &times; Latency)</span>
+                    <span class="text-rose-300">+ (0.10 &times; Efficiency)</span>
+                </div>
+                <p class="text-[11px] text-slate-400">
+                    <span class="text-emerald-400 font-semibold">How Pods are Bound:</span> When an upcoming flash crowd is detected by the LSTM-XGBoost ensemble, the candidate node with the <strong class="text-white">highest composite score</strong> is selected. The scheduler calls the Kubernetes <code class="text-indigo-300 font-mono">Binding API</code> to pre-warm the pod on that node <strong class="text-emerald-400">15s BEFORE</strong> the traffic arrives!
+                </p>
             </div>
 
             <div id="nodes-container" class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -381,11 +407,48 @@
             });
         }
 
+        async function toggleTrafficStream() {
+            const btn = document.getElementById('btn-toggle-traffic');
+            const isCurrentlyRunning = btn && btn.classList.contains('bg-rose-600');
+
+            try {
+                if (isCurrentlyRunning) {
+                    await fetch('/api/traffic/stop', { method: 'POST' });
+                } else {
+                    await fetch('/api/traffic/start', { method: 'POST' });
+                }
+                fetchDashboardData();
+            } catch (err) {
+                console.error("Traffic toggle error:", err);
+            }
+        }
+
         async function fetchDashboardData() {
             try {
                 const res = await fetch('/api/dashboard/status');
                 const data = await res.json();
                 
+                // Update traffic stream button & status label
+                const isTrafficRunning = data.traffic && data.traffic.is_running;
+                const btnTraffic = document.getElementById('btn-toggle-traffic');
+                const labelTraffic = document.getElementById('btn-traffic-label');
+                const statusTraffic = document.getElementById('metric-traffic-status');
+
+                if (btnTraffic && labelTraffic) {
+                    if (isTrafficRunning) {
+                        btnTraffic.className = "px-3.5 py-1.5 text-xs font-semibold bg-rose-600 hover:bg-rose-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5 shadow-rose-900/30";
+                        labelTraffic.innerText = "⏹ Pause Traffic Stream";
+                    } else {
+                        btnTraffic.className = "px-3.5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-white rounded-lg shadow-sm flex items-center gap-1.5 shadow-emerald-900/30";
+                        labelTraffic.innerText = "▶ Start Alibaba Traffic Stream";
+                    }
+                }
+
+                if (statusTraffic) {
+                    statusTraffic.innerText = isTrafficRunning ? "Streaming Alibaba 11.11 Trace" : "Status: Idle (Click 'Start Traffic')";
+                    statusTraffic.className = isTrafficRunning ? "mt-2 text-xs text-emerald-400 font-semibold" : "mt-2 text-xs text-slate-400";
+                }
+
                 // Update top metrics
                 document.getElementById('metric-rate').innerText = data.traffic.current_rate.toFixed(1);
                 document.getElementById('metric-latency').innerText = data.traffic.avg_latency_ms.toFixed(1);
@@ -424,49 +487,116 @@
             rankings.forEach(node => {
                 const isBest = node.rank === 1;
                 const hostedPods = nodePodCounts[node.node_name] || 0;
+                const sub = node.sub_scores || {
+                    cpu_headroom: 0.85,
+                    mem_headroom: 0.90,
+                    workload_balance: 0.88,
+                    latency_score: 0.92,
+                    resource_efficiency: 0.84
+                };
+                
                 const card = document.createElement('div');
-                card.className = `gradient-card border ${isBest ? 'border-emerald-500/80 ring-1 ring-emerald-500/40' : 'border-slate-800/80'} rounded-xl p-4 shadow-lg transition-all`;
+                card.className = `gradient-card border ${isBest ? 'border-emerald-500/80 ring-2 ring-emerald-500/30 shadow-emerald-950/40' : 'border-slate-800/80'} rounded-xl p-4 shadow-lg transition-all flex flex-col justify-between`;
                 
                 card.innerHTML = `
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center gap-2">
-                            <span class="w-2.5 h-2.5 rounded-full ${isBest ? 'bg-emerald-400' : 'bg-slate-500'}"></span>
-                            <span class="font-bold text-sm text-white">${node.node_name}</span>
-                        </div>
-                        <span class="px-2 py-0.5 text-xs font-bold rounded-md ${isBest ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}">
-                            RANK #${node.rank}
-                        </span>
-                    </div>
-
-                    <div class="space-y-2 mt-3">
-                        <div>
-                            <div class="flex justify-between text-xs text-slate-400 mb-1">
-                                <span>CPU Allocation</span>
-                                <span class="font-mono">${node.current_util_pct.cpu}%</span>
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full ${isBest ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}"></span>
+                                <span class="font-bold text-sm text-white">${node.node_name}</span>
                             </div>
-                            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                                <div class="h-2 rounded-full ${node.current_util_pct.cpu > 75 ? 'bg-rose-500' : 'bg-indigo-500'}" style="width: ${Math.min(100, node.current_util_pct.cpu)}%"></div>
-                            </div>
+                            <span class="px-2 py-0.5 text-xs font-bold rounded-md ${isBest ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-slate-400'}">
+                                ${isBest ? '★ RANK #1 (OPTIMAL)' : `RANK #${node.rank}`}
+                            </span>
                         </div>
 
-                        <div>
-                            <div class="flex justify-between text-xs text-slate-400 mb-1">
-                                <span>Memory Allocation</span>
-                                <span class="font-mono">${node.current_util_pct.mem}%</span>
+                        <!-- Current Allocations -->
+                        <div class="space-y-2 mt-3">
+                            <div>
+                                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                                    <span>CPU Used</span>
+                                    <span class="font-mono">${node.current_util_pct.cpu}%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                    <div class="h-1.5 rounded-full ${node.current_util_pct.cpu > 75 ? 'bg-rose-500' : 'bg-indigo-500'}" style="width: ${Math.min(100, node.current_util_pct.cpu)}%"></div>
+                                </div>
                             </div>
-                            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-                                <div class="h-2 rounded-full bg-cyan-500" style="width: ${Math.min(100, node.current_util_pct.mem)}%"></div>
+
+                            <div>
+                                <div class="flex justify-between text-xs text-slate-400 mb-1">
+                                    <span>Memory Used</span>
+                                    <span class="font-mono">${node.current_util_pct.mem}%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                    <div class="h-1.5 rounded-full bg-cyan-500" style="width: ${Math.min(100, node.current_util_pct.mem)}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 5-Objective Sub-Scores Breakdown -->
+                        <div class="mt-3.5 pt-3 border-t border-slate-800/80 space-y-1.5 text-[11px]">
+                            <div class="flex items-center justify-between font-semibold text-slate-300 mb-1">
+                                <span>Multi-Objective Breakdown</span>
+                                <span class="text-[10px] text-slate-400 font-mono">Weight &times; Score</span>
+                            </div>
+                            <div class="flex items-center justify-between text-slate-400">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                                    CPU Headroom (30%)
+                                </span>
+                                <span class="font-mono font-semibold text-indigo-300">${(sub.cpu_headroom * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="flex items-center justify-between text-slate-400">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                                    RAM Headroom (25%)
+                                </span>
+                                <span class="font-mono font-semibold text-cyan-300">${(sub.mem_headroom * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="flex items-center justify-between text-slate-400">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                    Load Balance (20%)
+                                </span>
+                                <span class="font-mono font-semibold text-amber-300">${(sub.workload_balance * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="flex items-center justify-between text-slate-400">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    Network Latency (15%)
+                                </span>
+                                <span class="font-mono font-semibold text-emerald-300">${(sub.latency_score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="flex items-center justify-between text-slate-400">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                    Resource Efficiency (10%)
+                                </span>
+                                <span class="font-mono font-semibold text-rose-300">${(sub.resource_efficiency * 100).toFixed(0)}%</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                        <span class="text-slate-400">Hosted Pods:</span>
-                        <span class="font-mono font-bold text-sm text-cyan-400">${hostedPods} Pods</span>
-                    </div>
-                    <div class="pt-1.5 flex items-center justify-between text-xs">
-                        <span class="text-slate-400">Multi-Objective Score:</span>
-                        <span class="font-mono font-bold text-sm ${isBest ? 'text-emerald-400' : 'text-slate-300'}">${node.composite_score.toFixed(4)}</span>
+                    <!-- Composite Score & Decision Footer -->
+                    <div class="mt-3.5 pt-3 border-t border-slate-800/80">
+                        <div class="flex items-center justify-between text-xs mb-1.5">
+                            <span class="text-slate-400">Composite Score <span class="font-mono font-bold text-slate-300">S_i</span>:</span>
+                            <span class="font-mono font-bold text-base ${isBest ? 'text-emerald-400' : 'text-slate-300'}">${node.composite_score.toFixed(4)}</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs mb-2.5">
+                            <span class="text-slate-400">Hosted Pods:</span>
+                            <span class="font-mono font-bold text-cyan-400">${hostedPods} Pods</span>
+                        </div>
+                        ${isBest ? `
+                            <div class="p-2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] leading-tight flex items-start gap-1">
+                                <span class="font-bold">★ TARGET:</span>
+                                <span>Highest score. Scheduler will pre-bind incoming surge pods here.</span>
+                            </div>
+                        ` : `
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 text-slate-400 text-[11px] leading-tight">
+                                Standby worker node. Composite score lower than Rank #1.
+                            </div>
+                        `}
                     </div>
                 `;
                 container.appendChild(card);
@@ -507,6 +637,7 @@
                 
                 const card = document.createElement('div');
                 card.className = "bg-slate-900/90 border border-slate-800 rounded-lg p-3 text-xs space-y-1.5 hover:border-slate-700 transition-all";
+                const isProactive = p.name.includes('proactive') || p.name.includes('surge');
                 card.innerHTML = `
                     <div class="flex items-center justify-between">
                         <span class="font-mono font-bold text-white truncate max-w-[130px]" title="${p.name}">${p.name}</span>
@@ -514,8 +645,14 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>${p.status}
                         </span>
                     </div>
+                    ${isProactive ? `
+                        <div class="text-[9px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5 flex items-center justify-between">
+                            <span>⚡ PRE-EMPTIVE POD</span>
+                            <span class="text-slate-400">MONR Bound</span>
+                        </div>
+                    ` : ''}
                     <div class="flex items-center justify-between text-[11px]">
-                        <span class="px-1.5 py-0.5 rounded border text-[10px] font-mono font-bold ${nodeBadgeClass}">${p.node}</span>
+                        <span class="px-1.5 py-0.5 rounded border text-[10px] font-mono font-bold ${nodeBadgeClass}">Host: ${p.node}</span>
                         <span class="text-slate-400 font-mono">${p.ready}</span>
                     </div>
                     <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
