@@ -348,14 +348,15 @@
         <!-- Scheduling Events & Decision Log -->
         <div class="gradient-card border border-slate-800/80 rounded-xl p-5 shadow-lg">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 1118 0z"></path></svg>
-                    Proactive Pod Scheduling Audit Log (Kubernetes API Bindings)
-                </h3>
-                <span class="text-xs text-slate-400">Auto-refreshing every 3s</span>
+                    <h3 class="text-sm font-semibold text-white">Proactive Pod Scheduling Audit Log (Kubernetes API Bindings)</h3>
+                    <span id="events-count-badge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-cyan-400 border border-slate-700">0 Events</span>
+                </div>
+                <span class="text-xs text-slate-400">All historical bindings recorded &bull; Live auto-refresh</span>
             </div>
             
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto max-h-[380px] overflow-y-auto rounded-lg border border-slate-800/80 scrollbar-thin">
                 <table class="w-full text-left text-xs font-mono">
                     <thead class="bg-slate-900/60 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                         <tr>
@@ -451,23 +452,21 @@
                 }
             });
 
-            // Radar Chart for Multi-Objective Scores
+            // Radar Chart for Multi-Objective Scores (Populated dynamically from Top MONR nodes)
             const ctxRadar = document.getElementById('rankingRadarChart').getContext('2d');
             radarChart = new Chart(ctxRadar, {
                 type: 'radar',
                 data: {
                     labels: ['CPU Headroom', 'RAM Headroom', 'Load Balance', 'Latency', 'Efficiency'],
-                    datasets: [
-                        { label: 'worker-node-1', data: [0.7, 0.7, 0.8, 0.85, 0.9], borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.2)' },
-                        { label: 'worker-node-2', data: [0.3, 0.3, 0.4, 0.6, 0.5], borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.2)' },
-                        { label: 'worker-node-3', data: [0.75, 0.72, 0.9, 0.8, 0.85], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.2)' }
-                    ]
+                    datasets: []
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
                         r: {
+                            min: 0,
+                            max: 1.0,
                             grid: { color: '#1e293b' },
                             angleLines: { color: '#334155' },
                             pointLabels: { color: '#94a3b8', font: { size: 10 } },
@@ -541,6 +540,39 @@
                     forecastChart.data.datasets[2].data = data.chart_data.xgb;
                     forecastChart.data.datasets[3].data = data.chart_data.ensemble;
                     forecastChart.update('none');
+                }
+
+                // Update Radar Chart with Top 3 Ranked Nodes dynamically
+                if (radarChart && data.nodes_rankings && data.nodes_rankings.length > 0) {
+                    const topNodes = data.nodes_rankings.slice(0, 3);
+                    const colors = [
+                        { border: '#10b981', bg: 'rgba(16, 185, 129, 0.2)' },
+                        { border: '#6366f1', bg: 'rgba(99, 102, 241, 0.2)' },
+                        { border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.2)' }
+                    ];
+                    radarChart.data.datasets = topNodes.map((node, idx) => {
+                        const sub = node.sub_scores || {
+                            cpu_headroom: 0.85,
+                            mem_headroom: 0.90,
+                            workload_balance: 0.88,
+                            latency_score: 0.92,
+                            resource_efficiency: 0.84
+                        };
+                        return {
+                            label: `${node.node_name} (Rank #${node.rank})`,
+                            data: [
+                                sub.cpu_headroom,
+                                sub.mem_headroom,
+                                sub.workload_balance,
+                                sub.latency_score,
+                                sub.resource_efficiency
+                            ],
+                            borderColor: colors[idx % colors.length].border,
+                            backgroundColor: colors[idx % colors.length].bg,
+                            borderWidth: idx === 0 ? 2.5 : 1.5
+                        };
+                    });
+                    radarChart.update('none');
                 }
 
                 // Update Events Log
@@ -791,14 +823,18 @@
 
         function renderEvents(events) {
             const tbody = document.getElementById('events-table-body');
+            const countBadge = document.getElementById('events-count-badge');
             tbody.innerHTML = '';
             
-            if (!events || events.length === 0) {
+            if (!events) events = [];
+            if (countBadge) countBadge.innerText = `${events.length} Events Logged`;
+
+            if (events.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-slate-500">No scheduling events yet. Click 'Schedule New Pod' to test proactive placement.</td></tr>`;
                 return;
             }
 
-            events.slice(-6).reverse().forEach(ev => {
+            [...events].reverse().forEach(ev => {
                 const tr = document.createElement('tr');
                 const isReschedule = ev.event_type === "PROACTIVE_RESCHEDULE" || (ev.pod_name && ev.pod_name.includes('rebalanced'));
                 tr.innerHTML = `
