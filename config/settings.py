@@ -20,7 +20,7 @@ MODELS_DIR.mkdir(exist_ok=True)
 EVALUATION_DIR.mkdir(exist_ok=True)
 
 # Kubernetes Configuration
-KUBECONFIG_PATH = os.getenv("KUBECONFIG", str(Path.home() / ".kube" / "config"))
+KUBECONFIG_PATH = os.path.expanduser(os.getenv("KUBECONFIG", str(Path.home() / ".kube" / "config")))
 SCHEDULER_NAME = "proactive-scheduler"
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 METRICS_SCRAPE_INTERVAL_SECONDS = 5

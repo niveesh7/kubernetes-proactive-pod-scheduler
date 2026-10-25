@@ -38,11 +38,16 @@ class ClusterMetricsCollector:
         self.metrics_history: List[Dict[str, Any]] = []
         self.max_buffer_size = WINDOW_SIZE * 5
         
-        # Simulated or initial fallback state for cluster nodes
+        # Dynamic 15-node baseline state for cluster
         self.fallback_nodes = {
-            "worker-node-1": {"cpu_capacity": 4.0, "mem_capacity_mb": 8192, "base_cpu": 1.2, "base_mem": 2400, "latency_ms": 12.0},
-            "worker-node-2": {"cpu_capacity": 4.0, "mem_capacity_mb": 8192, "base_cpu": 2.6, "base_mem": 5200, "latency_ms": 18.0},
-            "worker-node-3": {"cpu_capacity": 8.0, "mem_capacity_mb": 16384, "base_cpu": 1.8, "base_mem": 4100, "latency_ms": 14.0}
+            f"k3d-proactive-cluster-agent-{i}": {
+                "cpu_capacity": 4.0,
+                "mem_capacity_mb": 8192,
+                "base_cpu": round(0.7 + (i % 6) * 0.45, 2),
+                "base_mem": int(1600 + (i % 6) * 850),
+                "latency_ms": round(9.0 + (i % 5) * 3.2, 1)
+            }
+            for i in range(15)
         }
         
         self._init_k8s_client()
@@ -60,13 +65,18 @@ class ClusterMetricsCollector:
                 self.k8s_connected = True
                 print("[MetricsCollector] Connected via in-cluster Kubernetes config.")
             except Exception:
-                if Path(KUBECONFIG_PATH).exists():
-                    config.load_kube_config(config_file=KUBECONFIG_PATH)
+                kube_file = Path(os.path.expanduser(KUBECONFIG_PATH))
+                if not kube_file.exists():
+                    default_kube = Path.home() / ".kube" / "config"
+                    if default_kube.exists():
+                        kube_file = default_kube
+                if kube_file.exists():
+                    config.load_kube_config(config_file=str(kube_file))
                     self.k8s_connected = True
-                    print(f"[MetricsCollector] Connected to Kubernetes cluster via {KUBECONFIG_PATH}")
+                    print(f"[MetricsCollector] Connected to Kubernetes cluster via {kube_file}")
                 else:
                     self.k8s_connected = False
-                    print("[MetricsCollector] No kubeconfig found. Running in live telemetry mode.")
+                    print(f"[MetricsCollector] Kubeconfig not found at {kube_file}. Telemetry collector ready with 15-node simulated baseline.")
         except Exception as e:
             self.k8s_connected = False
             print(f"[MetricsCollector] Notice: Kubernetes API not reachable ({e}). Telemetry collector ready.")

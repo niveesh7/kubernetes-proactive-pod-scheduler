@@ -78,14 +78,19 @@ class ProactivePodScheduler:
                 self.k8s_api = client.CoreV1Api()
                 logger.info("Scheduler connected to in-cluster Kubernetes API.")
             except Exception:
-                if Path(KUBECONFIG_PATH).exists():
-                    config.load_kube_config(config_file=KUBECONFIG_PATH)
+                kube_file = Path(os.path.expanduser(KUBECONFIG_PATH))
+                if not kube_file.exists():
+                    default_kube = Path.home() / ".kube" / "config"
+                    if default_kube.exists():
+                        kube_file = default_kube
+                if kube_file.exists():
+                    config.load_kube_config(config_file=str(kube_file))
                     self.k8s_connected = True
                     self.k8s_api = client.CoreV1Api()
-                    logger.info(f"Scheduler connected via kubeconfig: {KUBECONFIG_PATH}")
+                    logger.info(f"Scheduler connected via kubeconfig: {kube_file}")
                 else:
                     self.k8s_connected = False
-                    logger.info("No active Kubernetes cluster found. Running in live autonomous scheduler mode.")
+                    logger.info(f"No active Kubernetes cluster found at {kube_file}. Running in live autonomous scheduler mode.")
         except Exception as e:
             self.k8s_connected = False
             logger.info(f"Kubernetes cluster connection: {e}. Ready for live dispatch.")

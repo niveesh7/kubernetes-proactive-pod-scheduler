@@ -29,12 +29,25 @@ if ! command -v k3d &> /dev/null; then
 fi
 echo "K3d CLI ready: $(k3d version 2>/dev/null | head -n 1)"
 
-# 3. Create 4-Node Kubernetes Cluster (1 Server + 3 Worker Agents)
-echo "[3/5] Initializing 4-Node Kubernetes Cluster..."
-if ! k3d cluster list 2>/dev/null | grep -q "proactive-cluster"; then
+TOTAL_NODES=${1:-15}
+if [ "$TOTAL_NODES" -lt 2 ]; then
+    TOTAL_NODES=15
+fi
+AGENTS=$((TOTAL_NODES - 1))
+
+# 3. Create Kubernetes Cluster (1 Server + AGENTS Worker Agents)
+echo "[3/5] Initializing $TOTAL_NODES-Node Kubernetes Cluster (1 Server + $AGENTS Agents)..."
+CURRENT_NODES=0
+if k3d cluster list 2>/dev/null | grep -q "proactive-cluster"; then
+    CURRENT_NODES=$(kubectl get nodes --no-headers 2>/dev/null | wc -l)
+fi
+
+if [ "$CURRENT_NODES" -ne "$TOTAL_NODES" ]; then
+    echo "  Recreating cluster to ensure exactly $TOTAL_NODES nodes (currently: $CURRENT_NODES)..."
+    k3d cluster delete proactive-cluster 2>/dev/null || true
     k3d cluster create proactive-cluster \
         --servers 1 \
-        --agents 3 \
+        --agents "$AGENTS" \
         --port "30080:30080@server:0" \
         --wait || true
 fi
